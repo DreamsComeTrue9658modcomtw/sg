@@ -21,33 +21,34 @@
         <i class="bi bi-shop me-2"></i>好識集退保證金
       </h3>
       
-      <!-- 步驟一：填寫與上傳 -->
+      <!-- 步驟一：填寫與上傳（新上傳攤商） -->
       <div id="step1">
         <div class="mb-3">
-          <label class="form-label fw-bold text-secondary">1. 選擇品牌/攤位號碼</label>
+          <label class="form-label fw-bold text-secondary">選擇品牌/攤位號碼</label>
           <select id="stallSelect" class="form-select form-select-lg" onchange="onStallChange()">
             <option value="">載入品牌中...</option>
           </select>
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-bold text-secondary">2. 登記電話末三碼</label>
+          <label class="form-label fw-bold text-secondary">登記電話末三碼</label>
           <input type="text" id="phoneInput" class="form-control form-control-lg" maxlength="3" placeholder="請輸入電話末 3 碼" inputmode="numeric">
         </div>
 
-        <div class="card bg-light p-3 border-0 mb-3">
-          <label class="form-label fw-bold text-secondary mb-1">3. 拍攝收攤照（新上傳必填）</label>
+        <div class="mb-3">
+          <label class="form-label fw-bold text-secondary">拍攝收攤照</label>
           <input type="file" id="photoInput" class="form-control" accept="image/*" capture="environment">
           <img id="previewImg" class="img-fluid d-block mx-auto shadow-sm" style="display:none;">
         </div>
 
         <button id="submitBtn" class="btn btn-primary btn-lg w-100 fw-bold mb-3 shadow-sm" onclick="uploadData()">
-          <i class="bi bi-cloud-upload me-2"></i>第一次上傳照片退款
+          <i class="bi bi-cloud-upload me-2"></i>上傳照片退款
         </button>
 
         <hr class="my-3">
 
-        <button id="resumeBtn" class="btn btn-outline-secondary w-100 fw-bold py-2" onclick="tryResume()">
+        <!-- 獨立查詢按鈕 -->
+        <button id="resumeBtn" class="btn btn-outline-secondary w-100 fw-bold py-2" onclick="openQueryModal()">
           <i class="bi bi-search me-2"></i>我已上傳過，查詢退款進度
         </button>
       </div>
@@ -87,7 +88,7 @@
 
   <script>
     // 🔑 請確認替換為您的 GAS 部署 API 網址
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw76mUQzf4xBgNMiBgPvR70Ug4-zUE9qYrV-QzOZdL84CHw85XKZGnYEOgKaUrjdMw/exec";
+    const GAS_API_URL = "https://script.google.com/macros/s/您的_GAS_DEPLOY_ID/exec";
 
     let availableStalls = [];
     let compressedPhotoBase64 = "";
@@ -169,27 +170,45 @@
       });
     }
 
-    // 🚀 查詢進度優化：驗證並調取後端資料
-    function tryResume() {
-      const stallSelectVal = document.getElementById('stallSelect').value.trim();
-      const phone = document.getElementById('phoneInput').value.trim();
-      
-      if (!stallSelectVal) return Swal.fire('提示', '請在上方【1. 選擇品牌/攤位號碼】', 'warning');
-      if (!phone) return Swal.fire('提示', '請在上方【2. 填寫電話末三碼】', 'warning');
-
-      Swal.fire({ title: '查詢退款進度中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-      fetch(`${GAS_API_URL}?action=resumeVendorStatus&stall=${encodeURIComponent(stallSelectVal)}&phone=${encodeURIComponent(phone)}`)
-        .then(res => res.json())
-        .then(res => {
-          Swal.close();
-          if (res.success && res.found) {
-            currentStall = res.stall;
-            showStep2(res);
-          } else {
-            Swal.fire('查無紀錄', res.message || '找不到該攤位的上傳紀錄，請確認電話是否正確。', 'info');
+    // 🚀 獨立彈窗查詢進度（解決上傳後選單無資料問題）
+    function openQueryModal() {
+      Swal.fire({
+        title: '查詢退款進度',
+        html: `
+          <input id="swalStall" class="swal2-input" placeholder="請輸入攤位號碼 (如: A01)" style="margin-bottom:10px;">
+          <input id="swalPhone" class="swal2-input" placeholder="請輸入登記電話末 3 碼" maxlength="3" type="number">
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '查詢',
+        cancelButtonText: '取消',
+        preConfirm: () => {
+          const stall = document.getElementById('swalStall').value.trim();
+          const phone = document.getElementById('swalPhone').value.trim();
+          if (!stall || !phone) {
+            Swal.showValidationMessage('請完整輸入攤位號碼與電話末三碼');
+            return false;
           }
-        });
+          return { stall: stall, phone: phone };
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const queryData = result.value;
+          Swal.fire({ title: '查詢中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+          fetch(`${GAS_API_URL}?action=resumeVendorStatus&stall=${encodeURIComponent(queryData.stall)}&phone=${encodeURIComponent(queryData.phone)}`)
+            .then(res => res.json())
+            .then(res => {
+              Swal.close();
+              if (res.success && res.found) {
+                currentStall = res.stall;
+                showStep2(res);
+              } else {
+                Swal.fire('查無紀錄', res.message || '找不到該攤位的上傳紀錄，請確認資料是否正確。', 'info');
+              }
+            });
+        }
+      });
     }
 
     function showStep2(info) {
