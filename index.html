@@ -24,29 +24,31 @@
       <!-- 步驟一：填寫與上傳 -->
       <div id="step1">
         <div class="mb-3">
-          <label class="form-label fw-bold text-secondary">選擇品牌名稱</label>
+          <label class="form-label fw-bold text-secondary">1. 選擇品牌/攤位號碼</label>
           <select id="stallSelect" class="form-select form-select-lg" onchange="onStallChange()">
             <option value="">載入品牌中...</option>
           </select>
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-bold text-secondary">登記電話末三碼</label>
+          <label class="form-label fw-bold text-secondary">2. 登記電話末三碼</label>
           <input type="text" id="phoneInput" class="form-control form-control-lg" maxlength="3" placeholder="請輸入電話末 3 碼" inputmode="numeric">
         </div>
 
-        <div class="mb-3">
-          <label class="form-label fw-bold text-secondary">拍攝收攤照</label>
+        <div class="card bg-light p-3 border-0 mb-3">
+          <label class="form-label fw-bold text-secondary mb-1">3. 拍攝收攤照（新上傳必填）</label>
           <input type="file" id="photoInput" class="form-control" accept="image/*" capture="environment">
           <img id="previewImg" class="img-fluid d-block mx-auto shadow-sm" style="display:none;">
         </div>
 
-        <button id="submitBtn" class="btn btn-primary btn-lg w-100 fw-bold mb-3" onclick="uploadData()">
-          <i class="bi bi-cloud-upload me-2"></i>上傳照片
+        <button id="submitBtn" class="btn btn-primary btn-lg w-100 fw-bold mb-3 shadow-sm" onclick="uploadData()">
+          <i class="bi bi-cloud-upload me-2"></i>第一次上傳照片退款
         </button>
 
-        <button id="resumeBtn" class="btn btn-outline-secondary w-100" onclick="tryResume()">
-          <i class="bi bi-search me-2"></i>我已上傳過，查詢進度
+        <hr class="my-3">
+
+        <button id="resumeBtn" class="btn btn-outline-secondary w-100 fw-bold py-2" onclick="tryResume()">
+          <i class="bi bi-search me-2"></i>我已上傳過，查詢退款進度
         </button>
       </div>
 
@@ -75,12 +77,16 @@
         <div id="completedArea" class="text-center text-success fw-bold fs-4 mt-4" style="display:none;">
           🎉 已完成保證金退還手續！
         </div>
+
+        <button class="btn btn-link text-secondary w-100 mt-3 text-decoration-none" onclick="location.reload()">
+          <i class="bi bi-arrow-left me-1"></i>返回首頁
+        </button>
       </div>
     </div>
   </div>
 
   <script>
-    // 🔑 請在此替換為您的 GAS 部署 API 網址
+    // 🔑 請確認替換為您的 GAS 部署 API 網址
     const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw76mUQzf4xBgNMiBgPvR70Ug4-zUE9qYrV-QzOZdL84CHw85XKZGnYEOgKaUrjdMw/exec";
 
     let availableStalls = [];
@@ -97,11 +103,11 @@
         .then(res => {
           availableStalls = res.data || [];
           const select = document.getElementById('stallSelect');
-          select.innerHTML = '<option value="">-- 請選擇您的攤位 --</option>';
+          select.innerHTML = '<option value="">-- 請選擇您的品牌/攤位 --</option>';
           availableStalls.forEach(item => {
             const opt = document.createElement('option');
             opt.value = item.stall;
-            opt.innerText = item.stall + ' - ' + item.name + ' ($' + item.amount + ')';
+            opt.innerText = item.stall + ' - ' + item.name;
             select.appendChild(opt);
           });
         });
@@ -138,9 +144,9 @@
 
     function uploadData() {
       const phone = document.getElementById('phoneInput').value.trim();
-      if (!selectedStallData) return Swal.fire('提示', '請選擇攤位！', 'warning');
+      if (!selectedStallData) return Swal.fire('提示', '請先選擇品牌/攤位號碼！', 'warning');
       if (phone !== selectedStallData.phone) return Swal.fire('錯誤', '電話末三碼不正確！', 'error');
-      if (!compressedPhotoBase64) return Swal.fire('提示', '請拍攝收攤照片！', 'warning');
+      if (!compressedPhotoBase64) return Swal.fire('提示', '請拍攝並上傳收攤照片！', 'warning');
 
       Swal.fire({ title: '照片上傳中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
@@ -163,14 +169,17 @@
       });
     }
 
+    // 🚀 查詢進度優化：驗證並調取後端資料
     function tryResume() {
-      let stall = document.getElementById('stallSelect').value.trim();
+      const stallSelectVal = document.getElementById('stallSelect').value.trim();
       const phone = document.getElementById('phoneInput').value.trim();
-      if (!stall || !phone) return Swal.fire('提示', '請選擇攤位並輸入電話末三碼', 'warning');
+      
+      if (!stallSelectVal) return Swal.fire('提示', '請在上方【1. 選擇品牌/攤位號碼】', 'warning');
+      if (!phone) return Swal.fire('提示', '請在上方【2. 填寫電話末三碼】', 'warning');
 
-      Swal.fire({ title: '查詢中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      Swal.fire({ title: '查詢退款進度中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-      fetch(`${GAS_API_URL}?action=resumeVendorStatus&stall=${encodeURIComponent(stall)}&phone=${encodeURIComponent(phone)}`)
+      fetch(`${GAS_API_URL}?action=resumeVendorStatus&stall=${encodeURIComponent(stallSelectVal)}&phone=${encodeURIComponent(phone)}`)
         .then(res => res.json())
         .then(res => {
           Swal.close();
@@ -178,7 +187,7 @@
             currentStall = res.stall;
             showStep2(res);
           } else {
-            Swal.fire('提示', res.message || '查無紀錄', 'info');
+            Swal.fire('查無紀錄', res.message || '找不到該攤位的上傳紀錄，請確認電話是否正確。', 'info');
           }
         });
     }
@@ -205,9 +214,10 @@
     function openConfirmModal() {
       Swal.fire({
         title: '確認收到保證金？',
+        text: '請確認現金或轉帳已確實收到',
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: '確認收到',
+        confirmButtonText: '確定收到',
         cancelButtonText: '返回'
       }).then((result) => {
         if (result.isConfirmed) {
