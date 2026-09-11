@@ -88,7 +88,7 @@
 
   <script>
     // 🔑 請確認替換為您的 GAS 部署 API 網址
-    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw76mUQzf4xBgNMiBgPvR70Ug4-zUE9qYrV-QzOZdL84CHw85XKZGnYEOgKaUrjdMw/exec";
+    const GAS_API_URL = "https://script.google.com/macros/s/您的_GAS_DEPLOY_ID/exec";
 
     let availableStalls = [];
     let compressedPhotoBase64 = "";
@@ -170,7 +170,6 @@
       });
     }
 
-    // 🚀 獨立彈窗查詢進度（解決上傳後選單無資料問題）
     function openQueryModal() {
       Swal.fire({
         title: '查詢退款進度',
@@ -212,6 +211,7 @@
     }
 
     function showStep2(info) {
+      currentStall = info.stall; // 🔒 確保全域變數一定有值
       document.getElementById('step1').style.display = 'none';
       document.getElementById('step2').style.display = 'block';
       document.getElementById('displayAmount').innerText = 'NT$ ' + info.amount;
@@ -230,20 +230,39 @@
       }
     }
 
+    // 🚀 最佳化：確認退款功能（增加安全防呆與即時動態提示）
     function openConfirmModal() {
+      if (!currentStall) {
+        return Swal.fire('錯誤', '找不到攤位資訊，請重新查詢。', 'error');
+      }
+
       Swal.fire({
         title: '確認收到保證金？',
-        text: '請確認現金或轉帳已確實收到',
+        text: `攤位：${currentStall}，請確認現金或轉帳已確實收到。`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: '確定收到',
-        cancelButtonText: '返回'
+        cancelButtonText: '返回',
+        confirmButtonColor: '#198754'
       }).then((result) => {
         if (result.isConfirmed) {
+          Swal.fire({ title: '核退處理中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
           fetch(`${GAS_API_URL}?action=vendorConfirmRefund&stall=${encodeURIComponent(currentStall)}`)
             .then(res => res.json())
             .then(res => {
-              if (res.success) showCompletedUI();
+              Swal.close();
+              if (res.success) {
+                Swal.fire('完成', '已成功確認收到保證金！', 'success').then(() => {
+                  showCompletedUI();
+                });
+              } else {
+                Swal.fire('更新失敗', res.message || '請稍後再試或聯繫現場工作人員。', 'error');
+              }
+            })
+            .catch(err => {
+              Swal.close();
+              Swal.fire('網路錯誤', '無法連接伺服器，請重試。', 'error');
             });
         }
       });
@@ -262,7 +281,7 @@
 
     function showCompletedUI() {
       document.getElementById('statusBadge').className = 'alert alert-success text-center fw-bold mb-4';
-      document.getElementById('statusBadge').innerText = '保證金退還已完成';
+      document.getElementById('statusBadge').innerHTML = '<i class="bi bi-check-circle-fill me-2"></i>保證金退還已完成';
       document.getElementById('actionArea').style.display = 'none';
       document.getElementById('completedArea').style.display = 'block';
       if (pollTimer) clearInterval(pollTimer);
