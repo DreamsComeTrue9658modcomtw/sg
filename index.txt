@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>好識集退保證金系統</title>
+  <!-- Bootstrap 5 & SweetAlert2 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .main-card { max-width: 450px; margin: 20px auto; border-radius: 16px; border: none; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+    #previewImg, #uploadedPhoto { max-width: 100%; border-radius: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container py-3">
+    <div class="card main-card p-4 bg-white">
+      <h3 class="text-center fw-bold mb-4 text-primary">
+        <i class="bi bi-shop me-2"></i>好識集退保證金
+      </h3>
+      
+      <!-- 步驟一：填寫與上傳 -->
+      <div id="step1">
+        <div class="mb-3">
+          <label class="form-label fw-bold text-secondary">選擇品牌名稱</label>
+          <select id="stallSelect" class="form-select form-select-lg" onchange="onStallChange()">
+            <option value="">載入品牌中...</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold text-secondary">登記電話末三碼</label>
+          <input type="text" id="phoneInput" class="form-control form-control-lg" maxlength="3" placeholder="請輸入電話末 3 碼" inputmode="numeric">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-bold text-secondary">拍攝收攤照</label>
+          <input type="file" id="photoInput" class="form-control" accept="image/*" capture="environment">
+          <img id="previewImg" class="img-fluid d-block mx-auto shadow-sm" style="display:none;">
+        </div>
+
+        <button id="submitBtn" class="btn btn-primary btn-lg w-100 fw-bold mb-3" onclick="uploadData()">
+          <i class="bi bi-cloud-upload me-2"></i>上傳照片
+        </button>
+
+        <button id="resumeBtn" class="btn btn-outline-secondary w-100" onclick="tryResume()">
+          <i class="bi bi-search me-2"></i>我已上傳過，查詢進度
+        </button>
+      </div>
+
+      <!-- 步驟二：狀態確認 -->
+      <div id="step2" style="display:none;">
+        <div id="statusBadge" class="alert alert-warning text-center fw-bold mb-4" role="alert">
+          <i class="bi bi-hourglass-split me-2"></i>收攤照已上傳，等待退款
+        </div>
+
+        <div class="text-center mb-4">
+          <span class="text-muted fs-6">可領保證金金額</span>
+          <h1 id="displayAmount" class="text-danger fw-bold display-5 my-2">NT$ 0</h1>
+          <p id="displayStall" class="fw-bold text-dark fs-5 mb-0"></p>
+        </div>
+
+        <div class="text-center mb-3">
+          <img id="uploadedPhoto" class="img-fluid shadow-sm" style="display:none;">
+        </div>
+
+        <div id="actionArea" class="mt-4">
+          <button class="btn btn-success btn-lg w-100 fw-bold py-3 shadow-sm" onclick="openConfirmModal()">
+            <i class="bi bi-check-circle me-2"></i>【我已收到保證金】
+          </button>
+        </div>
+
+        <div id="completedArea" class="text-center text-success fw-bold fs-4 mt-4" style="display:none;">
+          🎉 已完成保證金退還手續！
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 🔑 請在此替換為您的 GAS 部署 API 網址
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw76mUQzf4xBgNMiBgPvR70Ug4-zUE9qYrV-QzOZdL84CHw85XKZGnYEOgKaUrjdMw/exec";
+
+    let availableStalls = [];
+    let compressedPhotoBase64 = "";
+    let selectedStallData = null;
+    let currentStall = null;
+    let pollTimer = null;
+
+    loadStalls();
+
+    function loadStalls() {
+      fetch(`${GAS_API_URL}?action=getAvailableStalls`)
+        .then(res => res.json())
+        .then(res => {
+          availableStalls = res.data || [];
+          const select = document.getElementById('stallSelect');
+          select.innerHTML = '<option value="">-- 請選擇您的攤位 --</option>';
+          availableStalls.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.stall;
+            opt.innerText = item.stall + ' - ' + item.name + ' ($' + item.amount + ')';
+            select.appendChild(opt);
+          });
+        });
+    }
+
+    function onStallChange() {
+      const val = document.getElementById('stallSelect').value;
+      selectedStallData = availableStalls.find(x => x.stall === val) || null;
+    }
+
+    document.getElementById('photoInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxDef = 800;
+          let w = img.width, h = img.height;
+          if (w > h && w > maxDef) { h *= maxDef / w; w = maxDef; }
+          else if (h > maxDef) { w *= maxDef / h; h = maxDef; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          compressedPhotoBase64 = canvas.toDataURL('image/jpeg', 0.6);
+          const preview = document.getElementById('previewImg');
+          preview.src = compressedPhotoBase64;
+          preview.style.display = 'block';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function uploadData() {
+      const phone = document.getElementById('phoneInput').value.trim();
+      if (!selectedStallData) return Swal.fire('提示', '請選擇攤位！', 'warning');
+      if (phone !== selectedStallData.phone) return Swal.fire('錯誤', '電話末三碼不正確！', 'error');
+      if (!compressedPhotoBase64) return Swal.fire('提示', '請拍攝收攤照片！', 'warning');
+
+      Swal.fire({ title: '照片上傳中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+      fetch(GAS_API_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'submitVendorData',
+          data: { stall: selectedStallData.stall, phone: phone, photo: compressedPhotoBase64 }
+        })
+      })
+      .then(res => res.json())
+      .then(res => {
+        Swal.close();
+        if (res.success) {
+          currentStall = res.stall;
+          showStep2({ stall: res.stall, name: res.name, amount: res.amount, status: '等待退款', localPhoto: compressedPhotoBase64 });
+        } else {
+          Swal.fire('失敗', res.message, 'error');
+        }
+      });
+    }
+
+    function tryResume() {
+      let stall = document.getElementById('stallSelect').value.trim();
+      const phone = document.getElementById('phoneInput').value.trim();
+      if (!stall || !phone) return Swal.fire('提示', '請選擇攤位並輸入電話末三碼', 'warning');
+
+      Swal.fire({ title: '查詢中...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+      fetch(`${GAS_API_URL}?action=resumeVendorStatus&stall=${encodeURIComponent(stall)}&phone=${encodeURIComponent(phone)}`)
+        .then(res => res.json())
+        .then(res => {
+          Swal.close();
+          if (res.success && res.found) {
+            currentStall = res.stall;
+            showStep2(res);
+          } else {
+            Swal.fire('提示', res.message || '查無紀錄', 'info');
+          }
+        });
+    }
+
+    function showStep2(info) {
+      document.getElementById('step1').style.display = 'none';
+      document.getElementById('step2').style.display = 'block';
+      document.getElementById('displayAmount').innerText = 'NT$ ' + info.amount;
+      document.getElementById('displayStall').innerText = info.stall + ' - ' + info.name;
+      
+      const img = document.getElementById('uploadedPhoto');
+      if (info.localPhoto || info.imgDirectUrl) {
+        img.src = info.localPhoto || info.imgDirectUrl;
+        img.style.display = 'block';
+      }
+
+      if (info.status === '已完成退款' || info.status === '工作人員手動核退') {
+        showCompletedUI();
+      } else {
+        startPolling(info.stall);
+      }
+    }
+
+    function openConfirmModal() {
+      Swal.fire({
+        title: '確認收到保證金？',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '確認收到',
+        cancelButtonText: '返回'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch(`${GAS_API_URL}?action=vendorConfirmRefund&stall=${encodeURIComponent(currentStall)}`)
+            .then(res => res.json())
+            .then(res => {
+              if (res.success) showCompletedUI();
+            });
+        }
+      });
+    }
+
+    function startPolling(stall) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(() => {
+        fetch(`${GAS_API_URL}?action=checkVendorStatus&stall=${encodeURIComponent(stall)}`)
+          .then(res => res.json())
+          .then(res => {
+            if (res.status === '已完成退款' || res.status === '工作人員手動核退') showCompletedUI();
+          });
+      }, 3000);
+    }
+
+    function showCompletedUI() {
+      document.getElementById('statusBadge').className = 'alert alert-success text-center fw-bold mb-4';
+      document.getElementById('statusBadge').innerText = '保證金退還已完成';
+      document.getElementById('actionArea').style.display = 'none';
+      document.getElementById('completedArea').style.display = 'block';
+      if (pollTimer) clearInterval(pollTimer);
+    }
+  </script>
+</body>
+</html>
