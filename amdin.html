@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>保證金發放管理後台</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .login-box { max-width: 380px; margin: 80px auto; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+    .thumb-img { width: 50px; height: 50px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #dee2e6; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 管理員登入區 -->
+  <div id="loginArea" class="card login-box p-4 bg-white text-center border-0">
+    <h4 class="fw-bold mb-3"><i class="bi bi-shield-lock me-2"></i>管理員登入</h4>
+    <p class="text-muted small">請輸入後台管理密碼以存取資料</p>
+    <input type="password" id="pwdInput" class="form-control form-control-lg mb-3 text-center" placeholder="請輸入密碼" onkeypress="if(event.key==='Enter') login()">
+    <button class="btn btn-primary btn-lg fw-bold w-100" onclick="login()">登入後台</button>
+  </div>
+
+  <!-- 2. 主要管理儀表板 -->
+  <div id="adminMain" class="container py-4" style="display:none;">
+    <h3 class="fw-bold text-center mb-4"><i class="bi bi-speedometer2 me-2"></i>保證金發放管理後台</h3>
+    
+    <!-- 數據卡片 -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small fw-bold mb-1">等待退款</div>
+          <div id="pendingCount" class="fs-4 fw-bold text-danger">0 攤</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small fw-bold mb-1">已完成退款</div>
+          <div id="completedCount" class="fs-4 fw-bold text-success">0 攤</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small fw-bold mb-1">已發放總額</div>
+          <div id="totalAmount" class="fs-4 fw-bold text-primary">NT$ 0</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small fw-bold mb-1">剩餘保證金總額</div>
+          <div id="remainingDeposit" class="fs-4 fw-bold" style="color: #6f42c1;">NT$ 0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 清單表格 -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">攤位 / 名稱</th>
+                <th>金額</th>
+                <th>收攤照</th>
+                <th>狀態</th>
+                <th class="pe-3">管理操作</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr><td colspan="5" class="text-center py-4 text-muted" id="loadingStatusText">資料載入中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 🔑 請在此替換為您的 GAS 部署 API 網址
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbw76mUQzf4xBgNMiBgPvR70Ug4-zUE9qYrV-QzOZdL84CHw85XKZGnYEOgKaUrjdMw/exec";
+    let adminPassword = "";
+
+    function login() {
+      const pwd = document.getElementById('pwdInput').value.trim();
+      if (!pwd) return Swal.fire('提示', '請輸入密碼！', 'warning');
+
+      Swal.showLoading();
+      fetch(`${GAS_API_URL}?action=getAdminData&password=${encodeURIComponent(pwd)}`)
+        .then(res => res.json())
+        .then(res => {
+          Swal.close();
+          if (res && res.success) {
+            adminPassword = pwd;
+            document.getElementById('loginArea').style.display = 'none';
+            document.getElementById('adminMain').style.display = 'block';
+            renderAdminData(res);
+            setInterval(loadAdminData, 4000);
+          } else {
+            Swal.fire('錯誤', res.message || '密碼錯誤！', 'error');
+          }
+        });
+    }
+
+    function loadAdminData() {
+      fetch(`${GAS_API_URL}?action=getAdminData&password=${encodeURIComponent(adminPassword)}`)
+        .then(res => res.json())
+        .then(res => { if (res && res.success) renderAdminData(res); });
+    }
+
+    function renderAdminData(data) {
+      document.getElementById('pendingCount').innerText = data.pendingCount + ' 攤';
+      document.getElementById('completedCount').innerText = data.completedCount + ' 攤';
+      document.getElementById('totalAmount').innerText = 'NT$ ' + data.totalAmount.toLocaleString();
+      if (data.remainingDeposit !== undefined) {
+        document.getElementById('remainingDeposit').innerText = 'NT$ ' + Number(data.remainingDeposit).toLocaleString();
+      }
+
+      const tbody = document.getElementById('tableBody');
+      if (!data.list || data.list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">目前尚無提交資料</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      data.list.forEach(item => {
+        const tr = document.createElement('tr');
+        const isDone = item.status === '已完成退款' || item.status === '工作人員手動核退';
+        const photoHtml = item.imgDirectUrl ? 
+          `<img src="${item.imgDirectUrl}" class="thumb-img shadow-sm" onclick="openImageModal('${item.imgDirectUrl}')" title="點擊放大">` : 
+          (item.photoUrl ? `<a href="${item.photoUrl}" target="_blank" class="btn btn-sm btn-link">檢視照片</a>` : '<span class="text-muted small">無照片</span>');
+
+        tr.innerHTML = `
+          <td class="ps-3"><strong>${item.stall}</strong><br><span class="text-muted small">${item.name}</span></td>
+          <td><strong class="text-danger">NT$ ${item.amount}</strong></td>
+          <td>${photoHtml}</td>
+          <td><span class="badge ${isDone ? 'bg-success' : 'bg-warning text-dark'}">${item.status}</span></td>
+          <td class="pe-3">
+            ${isDone ? `<span class="text-muted small">${item.verifyTime || '已退款'}</span>` : 
+              `<button class="btn btn-sm btn-success fw-bold" onclick="triggerRefund('${item.stall}', ${item.amount})">手動代核退款</button>`}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function triggerRefund(stall, amount) {
+      Swal.fire({
+        title: '確認退款？',
+        text: `是否確定手動幫攤位 [ ${stall} ] 代核退款 NT$ ${amount} 元？`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '確定核退',
+        cancelButtonText: '取消'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          fetch(`${GAS_API_URL}?action=processRefundByAdmin&stall=${encodeURIComponent(stall)}&password=${encodeURIComponent(adminPassword)}`)
+            .then(res => res.json())
+            .then(res => {
+              Swal.fire('成功', res.message, 'success');
+              loadAdminData();
+            });
+        }
+      });
+    }
+
+    function openImageModal(url) {
+      Swal.fire({ imageUrl: url, imageAlt: '收攤照大圖', showCloseButton: true, showConfirmButton: false });
+    }
+  </script>
+</body>
+</html>
